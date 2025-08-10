@@ -6,10 +6,70 @@ import Button from '@/components/atoms/button/Button';
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from '@/icons';
 import Link from 'next/link';
 import React, { useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
+import { validateSignInForm, hasFormErrors } from '@/utils/validation';
+import type { SignInCredentials, FormErrors } from '@/types/auth';
+import { useRouter } from 'next/navigation';
 
 export default function SignInForm() {
   const [showPassword, setShowPassword] = useState(false);
-  const [isChecked, setIsChecked] = useState(false);
+  const [formData, setFormData] = useState<SignInCredentials>({
+    email: '',
+    password: '',
+    rememberMe: false,
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { signIn, error: authError, clearError } = useAuth();
+  const router = useRouter();
+
+  const handleInputChange =
+    (field: 'email' | 'password') =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setFormData(prev => ({ ...prev, [field]: value }));
+
+      // Clear specific field error when user starts typing
+      if (errors[field]) {
+        setErrors(prev => ({ ...prev, [field]: undefined }));
+      }
+
+      // Clear auth error when user makes changes
+      if (authError) {
+        clearError();
+      }
+    };
+
+  const handleCheckboxChange = (checked: boolean) => {
+    setFormData(prev => ({ ...prev, rememberMe: checked }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate form
+    const validationErrors = validateSignInForm(formData);
+    if (hasFormErrors(validationErrors)) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrors({});
+
+    try {
+      await signIn(formData);
+      // Redirect to dashboard on successful sign in
+      router.push('/');
+    } catch (error) {
+      // Error is handled by AuthContext
+      console.error('Sign in error:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className='flex w-full flex-1 flex-col lg:w-1/2'>
       <div className='mx-auto mb-5 w-full max-w-md sm:pt-10'>
@@ -84,13 +144,32 @@ export default function SignInForm() {
                 </span>
               </div>
             </div>
-            <form>
+            <form onSubmit={handleSubmit}>
+              {(authError || errors.general) && (
+                <div className='mb-4 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20'>
+                  <p className='text-sm text-red-600 dark:text-red-400'>
+                    {authError || errors.general}
+                  </p>
+                </div>
+              )}
+
               <div className='space-y-6'>
                 <div>
                   <Label>
                     Email <span className='text-error-500'>*</span>{' '}
                   </Label>
-                  <Input placeholder='info@gmail.com' type='email' />
+                  <Input
+                    placeholder='info@gmail.com'
+                    type='email'
+                    value={formData.email}
+                    onChange={handleInputChange('email')}
+                    className={errors.email ? 'border-red-500' : ''}
+                  />
+                  {errors.email && (
+                    <p className='mt-1 text-sm text-red-600 dark:text-red-400'>
+                      {errors.email}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>
@@ -100,6 +179,9 @@ export default function SignInForm() {
                     <Input
                       type={showPassword ? 'text' : 'password'}
                       placeholder='Enter your password'
+                      value={formData.password}
+                      onChange={handleInputChange('password')}
+                      className={errors.password ? 'border-red-500' : ''}
                     />
                     <span
                       onClick={() => setShowPassword(!showPassword)}
@@ -112,10 +194,18 @@ export default function SignInForm() {
                       )}
                     </span>
                   </div>
+                  {errors.password && (
+                    <p className='mt-1 text-sm text-red-600 dark:text-red-400'>
+                      {errors.password}
+                    </p>
+                  )}
                 </div>
                 <div className='flex items-center justify-between'>
                   <div className='flex items-center gap-3'>
-                    <Checkbox checked={isChecked} onChange={setIsChecked} />
+                    <Checkbox
+                      checked={formData.rememberMe || false}
+                      onChange={handleCheckboxChange}
+                    />
                     <span className='text-theme-sm block font-normal text-gray-700 dark:text-gray-400'>
                       Keep me logged in
                     </span>
@@ -128,8 +218,13 @@ export default function SignInForm() {
                   </Link>
                 </div>
                 <div>
-                  <Button className='w-full' size='sm'>
-                    Sign in
+                  <Button
+                    type='submit'
+                    className='w-full'
+                    size='sm'
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? 'Signing in...' : 'Sign in'}
                   </Button>
                 </div>
               </div>
